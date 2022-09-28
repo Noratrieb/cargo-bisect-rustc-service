@@ -7,6 +7,10 @@
         font-family: Arial, Helvetica, sans-serif;
       }
 
+      #result {
+        font-family: monospace;
+      }
+
       .hidden {
         display: none;
       }
@@ -30,55 +34,89 @@
       cols="80"
       placeholder="// Rust code goes here..."
     >
-fn uwu() {}
-    </textarea>
+fn main() {}</textarea
+    >
+    <br />
+    <label for="start">Start</label>
+    <input id="start" value="2022-01-01" />
+    <label for="end">End (optional)</label>
+    <input id="end" />
+    <br />
     <br />
     <button class="bisect-btn" onclick="bisect()">Bisect!</button>
 
-    <div id="status" class="hidden" />
-    <div id="result" class="hidden" />
+    <br />
+    <br />
+    <div id="status" class="hidden"></div>
+    <br />
+    <textarea
+      id="result"
+      class="hidden"
+      cols="80"
+      rows="20"
+      readonly
+    ></textarea>
 
     <script>
+      const BASE_URL = `${document.location}`;
+      const code = document.getElementById("code");
+      const status = document.getElementById("status");
+      const result = document.getElementById("result");
+      const start = document.getElementById("start");
+      const end = document.getElementById("end");
+
       let bisecting = false;
+
       async function bisect() {
         if (bisecting) {
           return;
         }
+
+        if (!start.value.trim()) {
+          alert("Must provide a start");
+          return;
+        }
+
         bisecting = true;
-        const code = document.getElementById("code");
-        const status = document.getElementById("status");
-        const result = document.getElementById("result");
 
         status.classList.remove("hidden");
+        result.classList.add("hidden");
         status.innerText = "Sending request...";
 
-        const fetched = await fetch(
-          "https://bisect-rustc.nilstrieb.dev/bisect",
-          {
-            method: "POST",
-            body: code.value,
-          }
-        );
-        const { id } = await fetched.json();
+        const params = new URLSearchParams();
+        params.append("start", start.value.trim());
+        if (end.value.trim()) {
+          params.append("end", end.value.trim());
+        }
+
+        const fetched = await fetch(`${BASE_URL}bisect?${params}`, {
+          method: "POST",
+          body: code.value,
+        });
+        const { job_id } = await fetched.json();
 
         async function tryFetch() {
-          const fetched = await fetch(
-            `https://bisect-rustc.nilstrieb.dev/bisect/${id}`
-          );
-          const { done, output, time } = await fetched.json();
+          const fetched = await fetch(`${BASE_URL}bisect/${job_id}`);
+          const response = await fetched.json();
 
-          if (done) {
+          if (response.status.status !== "InProgress") {
             bisecting = false;
-            result.innerText = output;
-            status.innerText = `Bisected job ${id} successfully in ${time}ms`;
-          }
+            console.log(response.status.output);
 
-          setTimeout(tryFetch, 3000);
+            status.classList.add("hidden");
+            result.classList.remove("hidden");
+
+            result.value = response.status.output;
+            status.innerHTML = `Bisected job ${job_id}`;
+          } else {
+            console.log("Waiting for bisection", response.status.status);
+            setTimeout(tryFetch, 3000);
+          }
         }
 
         tryFetch();
 
-        status.innerHTML = `Waiting for bisection, job id=${id}`;
+        status.innerHTML = `Waiting for result, job id=${job_id}`;
       }
     </script>
   </body>

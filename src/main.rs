@@ -6,7 +6,7 @@ mod db;
 use std::sync::{mpsc, Arc, Mutex};
 
 use axum::{
-    extract::Query,
+    extract::{Path, Query},
     http::StatusCode,
     response::{Html, IntoResponse},
     routing::{get, post, Router},
@@ -18,6 +18,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::env;
 use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 type SendChannel = Arc<Mutex<mpsc::Sender<Job>>>;
@@ -27,7 +28,9 @@ type Conn = Arc<Mutex<Connection>>;
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
 
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     let (job_queue_send, job_queue_recv) = mpsc::channel();
 
@@ -44,7 +47,7 @@ async fn main() -> color_eyre::Result<()> {
 
     let app = Router::new()
         .route("/", get(|| async { index_html() }))
-        // .route("/bisect/:id", get(get_bisection))
+        .route("/bisect/:id", get(get_bisection))
         .route("/bisect", get(get_bisections))
         .route("/bisect", post(do_bisection))
         // this is really stupid and hacky
@@ -65,6 +68,18 @@ fn index_html() -> impl IntoResponse {
     Html(include_str!("../index.html"))
 }
 
+async fn get_bisection(
+    Extension(conn): Extension<Conn>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    db::get_bisection(&conn.lock().unwrap(), id)
+        .map(|bisections| Json(bisections))
+        .map_err(|err| {
+            error!(?err, "error getting bisections");
+            (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+        })
+}
+
 async fn get_bisections(Extension(conn): Extension<Conn>) -> impl IntoResponse {
     db::get_bisections(&conn.lock().unwrap())
         .map(|bisections| Json(bisections))
@@ -76,7 +91,7 @@ async fn get_bisections(Extension(conn): Extension<Conn>) -> impl IntoResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct Options {
-    start: Option<chrono::NaiveDate>,
+    start: chrono::NaiveDate,
     end: Option<chrono::NaiveDate>,
 }
 

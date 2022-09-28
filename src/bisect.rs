@@ -1,18 +1,21 @@
+use std::process::Output;
 use std::{fs, process::Command, sync::mpsc};
 
-use color_eyre::eyre::Context;
+use color_eyre::eyre::{Context, ContextCompat};
+use color_eyre::Result;
 use rusqlite::Connection;
 use serde::Serialize;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::Options;
+use crate::{db, Options};
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "status")]
 pub enum BisectStatus {
     InProgress,
-    Error(String),
-    Success(String),
+    Error { output: String },
+    Success { output: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -29,15 +32,15 @@ pub struct Job {
 }
 
 enum JobState {
-    Failed(String),
-    Success(String),
+    Failed,
+    Success,
 }
 
 impl JobState {
     fn status(&self) -> &'static str {
         match self {
-            Self::Failed(_) => "error",
-            Self::Success(_) => "success",
+            Self::Failed => "error",
+            Self::Success => "success",
         }
     }
 }
@@ -66,27 +69,69 @@ pub fn bisect_worker(jobs: mpsc::Receiver<Job>, conn: Connection) {
 
         info!(id = %job.id, "Starting bisection job");
 
-        bisect_job(job);
+        let mut bisect = Bisection {
+            id: job.id,
+            code: job.code.clone(),
+            status: BisectStatus::InProgress,
+        };
+
+        match db::add_bisection(&conn, &bisect).wrap_err("insert bisection") {
+            Ok(()) => {
+                let status = match bisect_job(job) {
+                    Ok(status) => status,
+                    Err(err) => {
+                        error!(?err, "error processing bisection");
+                        BisectStatus::Error {
+                            output: err.to_string(),
+                        }
+                    }
+                };
+
+                bisect.status = status;
+
+                match db::update_bisection_status(&conn, &bisect) {
+                    Ok(()) => {}
+                    Err(err) => error!(?err, "error updating bisection"),
+                }
+            }
+            Err(err) => error!(?err, "error inserting bisection"),
+        }
     }
 }
 
 #[tracing::instrument(skip(job), fields(id = %job.id))]
-fn bisect_job(job: Job) {
-    match run_bisect_for_file(job.code, job.options.start, job.options.end) {
-        Ok(state) => {
-            info!(state = %state.status(), "Bisection finished");
+fn bisect_job(job: Job) -> Result<BisectStatus> {
+    let (output, state) = run_bisect_for_file(job.code, job.options.start, job.options.end)?;
+    info!(state = %state.status(), "Bisection finished");
+
+    process_result(output, state).wrap_err("process result")
+}
+
+fn process_result(output: Output, state: JobState) -> Result<BisectStatus> {
+    let stderr =
+        String::from_utf8(output.stderr).wrap_err("cargo-bisect-rustc stderr utf8 validation")?;
+
+    match state {
+        JobState::Failed => {
+            let output = stderr.lines().rev().take(10).collect::<String>();
+            info!(?output, "output");
+            Ok(BisectStatus::Error { output })
         }
-        Err(err) => {
-            error!(?err, "Error during bisection");
+        JobState::Success => {
+            let cutoff = stderr.rfind("searched nightlies:").wrap_err_with(|| {
+                format!("cannot find `searched nightlies:` in output. output:\n{stderr}")
+            })?;
+            let output = stderr[cutoff..].to_string();
+            Ok(BisectStatus::Success { output })
         }
     }
 }
 
 fn run_bisect_for_file(
     input: String,
-    start: Option<chrono::NaiveDate>,
+    start: chrono::NaiveDate,
     end: Option<chrono::NaiveDate>,
-) -> color_eyre::Result<JobState> {
+) -> Result<(Output, JobState)> {
     let temp_dir = tempdir::TempDir::new("bisect").wrap_err("creating tempdir")?;
     let mut cargo_new = Command::new("cargo");
     cargo_new
@@ -111,9 +156,7 @@ fn run_bisect_for_file(
     bisect.arg("--timeout").arg("30"); // don't hang
     bisect.current_dir(&cargo_dir);
 
-    if let Some(start) = start {
-        bisect.arg("--start").arg(start.to_string());
-    }
+    bisect.arg("--start").arg(start.to_string());
 
     if let Some(end) = end {
         bisect.arg("--end").arg(end.to_string());
@@ -122,14 +165,8 @@ fn run_bisect_for_file(
     let output = bisect.output().wrap_err("spawning cargo-bisect-rustc")?;
 
     if output.status.success() {
-        Ok(JobState::Success(
-            String::from_utf8(output.stdout)
-                .wrap_err("cargo-bisect-rustc stdout utf8 validation")?,
-        ))
+        Ok((output, JobState::Success))
     } else {
-        Ok(JobState::Failed(
-            String::from_utf8(output.stderr)
-                .wrap_err("cargo-bisect-rustc stderr utf8 validation")?,
-        ))
+        Ok((output, JobState::Failed))
     }
 }
