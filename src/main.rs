@@ -17,7 +17,7 @@ use color_eyre::eyre::Context;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::env;
-use tracing::{error, info};
+use tracing::{error, info, metadata::LevelFilter};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
@@ -29,7 +29,11 @@ async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
         .init();
 
     let (job_queue_send, job_queue_recv) = mpsc::channel();
