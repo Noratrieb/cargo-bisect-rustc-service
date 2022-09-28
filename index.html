@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Bisect rustc</title>
+  <style>
+    .hidden {
+      dispaly: none
+    }
+  </style>
+</head>
+<body>
+  <h1>Bisect rustc</h1>
+
+  <textarea id="code">
+    // Rust code goes here...
+  </textarea>
+  <button onclick="bisect()">Bisect!</button>
+
+  <div id="status" class="hidden"/>
+  <div id="result" class="hidden"/>
+  
+  <script>
+    let bisecting = false;
+    async function bisect() {
+      if (bisecting) {
+        return;
+      }
+      bisecting = true;
+      const code = document.getElementById("code");
+      const status = document.getElementById("status");
+      const result = document.getElementById("result");
+
+      status.classList.remove("hidden");
+      status.innerText = "Sending request...";
+      
+      const fetched = await fetch("https://bisect-rustc.nilstrieb.dev/bisect", {
+        method: "POST",
+        body: code.value,
+      });
+      const { id } = await fetched.json();
+      
+      function tryFetch() {
+        const fetched = await fetch(`https://bisect-rustc.nilstrieb.dev/bisect/${id}`);
+        const { done, output, time } = await fetched.json();
+        
+        if (done) {
+          bisecting = false;
+          result.innerText = output;
+          status.innerText = `Bisected job ${id} successfully in ${time}ms`;
+        }
+        
+        setTimeout(tryFetch, 3000);
+      }
+      
+      tryFetch();
+      
+      status.innerHTML = `Waiting for bisection, job id=${id}`;
+    }
+  </script>
+</body>
+</html>
