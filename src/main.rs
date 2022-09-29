@@ -97,6 +97,7 @@ async fn get_bisections(Extension(conn): Extension<Conn>) -> impl IntoResponse {
 pub struct Options {
     start: chrono::NaiveDate,
     end: Option<chrono::NaiveDate>,
+    kind: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

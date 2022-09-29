@@ -34,13 +34,28 @@
       cols="80"
       placeholder="// Rust code goes here..."
     >
-fn main() {}</textarea
+struct Struct&lt;T&gt;(T);
+
+impl&lt;T&gt; Struct&lt;T&gt; {
+  const CONST: fn() = || {
+      struct _Obligation where T:;
+  };
+}
+</textarea
     >
     <br />
     <label for="start">Start</label>
     <input id="start" value="2022-01-01" />
     <label for="end">End (optional)</label>
-    <input id="end" />
+    <input id="end" value="2022-06-01" />
+    <label for="kind">Regression Kind</label>
+    <select id="kind">
+      <option>error</option>
+      <option>success</option>
+      <option selected="selected">ice</option>
+      <option>non-ice</option>
+      <option>non-error</option>
+    </select>
     <br />
     <br />
     <button class="bisect-btn" onclick="bisect()">Bisect!</button>
@@ -64,6 +79,7 @@ fn main() {}</textarea
       const result = document.getElementById("result");
       const start = document.getElementById("start");
       const end = document.getElementById("end");
+      const kind = document.getElementById("kind");
 
       let bisecting = false;
 
@@ -84,14 +100,24 @@ fn main() {}</textarea
         status.innerText = "Sending request...";
 
         const params = new URLSearchParams();
+
         params.append("start", start.value.trim());
+        params.append("kind", kind.value);
+
         if (end.value.trim()) {
           params.append("end", end.value.trim());
         }
 
+        const body = code.value;
+
+        console.log("Bisecting", body);
+
         const fetched = await fetch(`${BASE_URL}bisect?${params}`, {
           method: "POST",
-          body: code.value,
+          body,
+          headers: {
+            "Content-Type": "application/text",
+          },
         });
         const { job_id } = await fetched.json();
 
