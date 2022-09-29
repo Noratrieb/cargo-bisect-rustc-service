@@ -1,6 +1,7 @@
 use std::process::Output;
 use std::{fs, process::Command, sync::mpsc};
 
+use chrono::{DateTime, Utc};
 use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
 use rusqlite::Connection;
@@ -22,6 +23,7 @@ pub enum BisectStatus {
 pub struct Bisection {
     pub id: Uuid,
     pub code: String,
+    pub time: DateTime<Utc>,
     pub status: BisectStatus,
 }
 
@@ -83,6 +85,7 @@ pub fn process_job(job: Job, conn: &Connection) -> Result<()> {
     let mut bisect = Bisection {
         id: job.id,
         code: job.code.clone(),
+        time: Utc::now(),
         status: BisectStatus::InProgress,
     };
 
@@ -169,7 +172,7 @@ fn run_bisect_for_file(input: String, options: &Options) -> Result<(Output, JobS
 
     bisect
         .arg("--regress")
-        .arg(options.kind.as_deref().unwrap_or("ice")); // FIXME Make this configurable
+        .arg(options.kind.as_deref().unwrap_or("ice"));
 
     bisect.env("RUST_LOG", "error"); // overwrite RUST_LOG
 

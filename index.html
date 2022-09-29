@@ -19,6 +19,10 @@
         columns: 100;
       }
 
+      .error {
+        color: red;
+      }
+
       .bisect-btn {
         width: 200px;
         height: 50px;
@@ -76,66 +80,101 @@ impl&lt;T&gt; Struct&lt;T&gt; {
 
     <script>
       const BASE_URL = `${document.location}`;
-      const code = document.getElementById("code");
-      const status = document.getElementById("status");
-      const result = document.getElementById("result");
-      const start = document.getElementById("start");
-      const end = document.getElementById("end");
-      const kind = document.getElementById("kind");
+      const htmlCode = document.getElementById("code");
+      const htmlStatus = document.getElementById("status");
+      const htmlResult = document.getElementById("result");
+      const htmlStart = document.getElementById("start");
+      const htmlEnd = document.getElementById("end");
+      const htmlKind = document.getElementById("kind");
 
       let bisecting = false;
+
+      function fatal(err, ...extra) {
+        console.error(err, ...(extra || []));
+        htmlStatus.innerHTML = `ERROR: ${err}`;
+        htmlStatus.classList.remove("hidden");
+        htmlStatus.classList.add("error");
+        bisecting = false;
+      }
 
       async function bisect() {
         if (bisecting) {
           return;
         }
 
-        if (!start.value.trim()) {
-          alert("Must provide a start");
+        if (!htmlStart.value.trim()) {
+          fatal("Must provide a start");
           return;
         }
 
         bisecting = true;
 
-        status.classList.remove("hidden");
-        result.classList.add("hidden");
-        status.innerText = "Sending request...";
+        htmlStatus.classList.remove("error");
+        htmlStatus.classList.remove("hidden");
+        htmlResult.classList.add("hidden");
+        htmlStatus.innerText = "Sending request...";
 
         const params = new URLSearchParams();
 
-        params.append("start", start.value.trim());
-        params.append("kind", kind.value);
+        params.append("start", htmlStart.value.trim());
+        params.append("kind", htmlKind.value);
 
-        if (end.value.trim()) {
-          params.append("end", end.value.trim());
+        if (htmlEnd.value.trim()) {
+          params.append("end", htmlEnd.value.trim());
         }
 
-        const body = code.value;
+        const body = htmlCode.value;
 
         console.log("Bisecting", body);
 
-        const fetched = await fetch(`${BASE_URL}bisect?${params}`, {
-          method: "POST",
-          body,
-          headers: {
-            "Content-Type": "application/text",
-          },
-        });
-        const { job_id } = await fetched.json();
+        let jobId;
+        try {
+          const fetched = await fetch(`${BASE_URL}bisect?${params}`, {
+            method: "POST",
+            body,
+            headers: {
+              "Content-Type": "application/text",
+            },
+          });
+          if (!fetched.ok) {
+            console.error(fetched);
+            fatal("Failed to fetch", fetched);
+            return;
+          }
+          const data = await fetched.json();
+          jobId = data?.job_id;
+          if (!jobId) {
+            fatal("Received invalid response", data);
+            return;
+          }
+        } catch (err) {
+          fatal(err);
+          return;
+        }
 
         async function tryFetch() {
-          const fetched = await fetch(`${BASE_URL}bisect/${job_id}`);
-          const response = await fetched.json();
+          let response;
+          try {
+            const fetched = await fetch(`${BASE_URL}bisect/${jobId}`);
+            if (!fetched.ok) {
+              fatal("Failed to fetch", fetched);
+              return;
+            }
+            response = await fetched.json();
+          } catch (e) {
+            fatal(e);
+            return;
+          }
 
           if (response.status.status !== "InProgress") {
             bisecting = false;
             console.log(response.status.output);
 
-            status.classList.add("hidden");
-            result.classList.remove("hidden");
+            htmlStatus.classList.add("hidden");
+            htmlResult.classList.remove("hidden");
 
-            result.value = response.status.output;
-            status.innerHTML = `Bisected job ${job_id}`;
+            htmlResult.value = response.status.output;
+            htmlStatus.innerHTML = `Bisected job ${jobId}`;
           } else {
             console.log("Waiting for bisection", response.status.status);
             setTimeout(tryFetch, 3000);
@@ -144,7 +183,7 @@ impl&lt;T&gt; Struct&lt;T&gt; {
 
         tryFetch();
 
-        status.innerHTML = `Waiting for result, job id=${job_id}`;
+        htmlStatus.innerHTML = `Waiting for result, job id=${jobId}`;
       }
     </script>
   </body>

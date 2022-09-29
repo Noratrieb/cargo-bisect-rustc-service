@@ -11,6 +11,7 @@ pub fn setup(conn: &Connection) -> color_eyre::Result<()> {
             job_id STRING PRIMARY KEY,
             code STRING NOT NULL,
             status INTEGER NOT NULL DEFAULT 0,
+            time TIME NOT NULL,
             stdout_stderr STRING -- stdout or stderr depending on the status
         )",
         (),
@@ -34,8 +35,8 @@ pub fn add_bisection(conn: &Connection, bisect: &Bisection) -> color_eyre::Resul
     let (status, stdout_stderr) = status_to_sql(&bisect.status);
 
     conn.execute(
-        "INSERT INTO bisect (job_id, code, status, stdout_stderr) VALUES (?1, ?2, ?3, ?4)",
-        (bisect.id, &bisect.code, status, stdout_stderr),
+        "INSERT INTO bisect (job_id, code, status, time, stdout_stderr) VALUES (?1, ?2, ?3, ?4, ?5)",
+        (bisect.id, &bisect.code, status, &bisect.time, stdout_stderr),
     )
     .wrap_err("insert into database")
     .map(drop)
@@ -54,7 +55,7 @@ pub fn update_bisection_status(conn: &Connection, bisect: &Bisection) -> color_e
 
 pub fn get_bisections(conn: &Connection) -> color_eyre::Result<Vec<Bisection>> {
     let mut select = conn
-        .prepare("SELECT job_id, code, status, stdout_stderr FROM bisect")
+        .prepare("SELECT job_id, code, status, time, stdout_stderr FROM bisect")
         .wrap_err("preparing select")?;
 
     let iter = select
@@ -65,13 +66,14 @@ pub fn get_bisections(conn: &Connection) -> color_eyre::Result<Vec<Bisection>> {
                 status: match row.get(2)? {
                     0 => BisectStatus::InProgress,
                     1 => BisectStatus::Error {
-                        output: row.get(3)?,
+                        output: row.get(4)?,
                     },
                     2 => BisectStatus::Success {
-                        output: row.get(3)?,
+                        output: row.get(4)?,
                     },
                     _ => return Err(rusqlite::Error::InvalidQuery), // actually not lol
                 },
+                time: row.get(3)?,
             })
         })
         .wrap_err("getting bisections from db query")?;
@@ -82,7 +84,7 @@ pub fn get_bisections(conn: &Connection) -> color_eyre::Result<Vec<Bisection>> {
 
 pub fn get_bisection(conn: &Connection, id: Uuid) -> color_eyre::Result<Option<Bisection>> {
     let mut select = conn
-        .prepare("SELECT job_id, code, status, stdout_stderr FROM bisect WHERE job_id = ?1")
+        .prepare("SELECT job_id, code, status, time, stdout_stderr FROM bisect WHERE job_id = ?1")
         .wrap_err("preparing select")?;
 
     let mut iter = select
@@ -93,13 +95,14 @@ pub fn get_bisection(conn: &Connection, id: Uuid) -> color_eyre::Result<Option<B
                 status: match row.get(2)? {
                     0 => BisectStatus::InProgress,
                     1 => BisectStatus::Error {
-                        output: row.get(3)?,
+                        output: row.get(4)?,
                     },
                     2 => BisectStatus::Success {
-                        output: row.get(3)?,
+                        output: row.get(4)?,
                     },
                     _ => return Err(rusqlite::Error::InvalidQuery), // actually not lol
                 },
+                time: row.get(3)?,
             })
         })
         .wrap_err("getting bisections from db query")?;

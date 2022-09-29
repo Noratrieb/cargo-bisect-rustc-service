@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 axum = "0.5.16"
-chrono = { version = "0.4.22", features = ["serde"] }
+chrono = { version = "0.4.22", features = ["serde", "clock"] }
 color-eyre = "0.6.2"
-rusqlite = { version = "0.28.0", features = ["bundled", "uuid"] }
+rusqlite = { version = "0.28.0", features = ["bundled", "uuid", "chrono"] }
 serde = { version = "1.0.145", features = ["derive"] }
 tempdir = "0.3.7"
 tokio = { version = "1.21.2", features = ["full"] }
