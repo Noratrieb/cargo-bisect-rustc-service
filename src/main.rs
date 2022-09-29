@@ -36,7 +36,7 @@ async fn main() -> color_eyre::Result<()> {
         )
         .init();
 
-    let (job_queue_send, job_queue_recv) = mpsc::channel();
+    let (job_queue_send, job_queue_recv) = mpsc::channel(); // FIXME: make this a sync_channel because bounds are cool
 
     let sqlite_db = env::var("SQLITE_DB").unwrap_or_else(|_| "bisect.sqlite".to_string());
 
