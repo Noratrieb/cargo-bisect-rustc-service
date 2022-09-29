@@ -32,12 +32,16 @@
   <body>
     <h1>Bisect rustc</h1>
 
-    <textarea
-      id="code"
-      rows="30"
-      cols="80"
-      placeholder="// Rust code goes here..."
-    >
+    <form name="bisect" id="bisect-form">
+      <label for="code">Code</label>
+      <br />
+      <textarea
+        id="code"
+        rows="30"
+        cols="80"
+        placeholder="// Rust code goes here..."
+        name="code"
+      >
 struct Struct&lt;T&gt;(T);
 
 impl&lt;T&gt; Struct&lt;T&gt; {
@@ -46,25 +50,27 @@ impl&lt;T&gt; Struct&lt;T&gt; {
   };
 }
 </textarea
-    >
-    <br />
-    <label for="start">Start</label>
-    <input id="start" value="2022-01-01" />
-    <label for="end">End (optional)</label>
-    <input id="end" value="2022-06-01" />
-    <label for="kind">Regression Kind</label>
-    <select id="kind">
-      <option>error</option>
-      <option>success</option>
-      <option selected="selected">ice</option>
-      <option>non-ice</option>
-      <option>non-error</option>
-    </select>
+      >
+      <br />
+      <label for="start">Start</label>
+      <input id="start" value="2022-01-01" name="start" />
 
-    <br />
-    <br />
+      <label for="end">End (optional)</label>
+      <input id="end" value="2022-06-01" name="end" />
 
-    <button class="bisect-btn" onclick="bisect()">Bisect!</button>
+      <label for="kind">Regression Kind</label>
+      <select id="kind" name="select">
+        <option>error</option>
+        <option>success</option>
+        <option selected="selected">ice</option>
+        <option>non-ice</option>
+        <option>non-error</option>
+      </select>
+
+      <br />
+      <br />
+      <input type="submit" class="bisect-btn" value="Bisect!" />
+    </form>
 
     <br />
     <br />
@@ -80,12 +86,8 @@ impl&lt;T&gt; Struct&lt;T&gt; {
 
     <script>
       const BASE_URL = `${document.location}`;
-      const htmlCode = document.getElementById("code");
       const htmlStatus = document.getElementById("status");
       const htmlResult = document.getElementById("result");
-      const htmlStart = document.getElementById("start");
-      const htmlEnd = document.getElementById("end");
-      const htmlKind = document.getElementById("kind");
 
       let bisecting = false;
 
@@ -97,13 +99,31 @@ impl&lt;T&gt; Struct&lt;T&gt; {
         bisecting = false;
       }
 
-      async function bisect() {
-        if (bisecting) {
+      function submitForm() {
+        const form = document.forms.bisect;
+        const options = {
+          code: form.code.value,
+          start: form.start.value?.trim(),
+          end: form.end.value?.trim(),
+          kind: form.kind.value,
+        };
+        console.log("Options", options);
+
+        if (!options.start) {
+          fatal("Must provide a start");
           return;
         }
 
-        if (!htmlStart.value.trim()) {
-          fatal("Must provide a start");
+        bisect(options);
+      }
+
+      document.getElementById("bisect-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        submitForm();
+      });
+
+      async function bisect(options) {
+        if (bisecting) {
           return;
         }
 
@@ -116,16 +136,14 @@ impl&lt;T&gt; Struct&lt;T&gt; {
 
         const params = new URLSearchParams();
 
-        params.append("start", htmlStart.value.trim());
-        params.append("kind", htmlKind.value);
+        params.append("start", options.start);
+        params.append("kind", options.kind);
 
-        if (htmlEnd.value.trim()) {
-          params.append("end", htmlEnd.value.trim());
+        if (options.end) {
+          params.append("end", options.end);
         }
 
-        const body = htmlCode.value;
-
-        console.log("Bisecting", body);
+        const body = options.code;
 
         let jobId;
         try {
