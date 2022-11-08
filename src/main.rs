@@ -5,6 +5,7 @@ mod db;
 
 use std::sync::{mpsc, Arc, Mutex};
 
+use crate::bisect::Job;
 use axum::{
     extract::{Path, Query},
     http::StatusCode,
@@ -12,11 +13,11 @@ use axum::{
     routing::{get, post, Router},
     Extension, Json,
 };
-use bisect::Job;
 use color_eyre::eyre::Context;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::env;
+use tower_http::trace::TraceLayer;
 use tracing::{error, info, metadata::LevelFilter};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -56,7 +57,8 @@ async fn main() -> color_eyre::Result<()> {
         .route("/bisect", post(do_bisection))
         // this is really stupid and hacky
         .layer(Extension(Arc::new(Mutex::new(job_queue_send))))
-        .layer(Extension(main_conn));
+        .layer(Extension(main_conn))
+        .layer(TraceLayer::new_for_http());
 
     std::thread::spawn(|| bisect::bisect_worker(job_queue_recv, worker_conn));
 
