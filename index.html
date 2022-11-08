@@ -85,7 +85,13 @@ impl&lt;T&gt; Struct&lt;T&gt; {
     ></textarea>
 
     <script>
-      const BASE_URL = `${document.location}`;
+      let BASE_URL = `${document.location}`;
+      if (!BASE_URL.endsWith("/")) {
+        // ugh, i hate url paths and their subtle interactions with things
+        BASE_URL = `${BASE_URL}/`;
+      }
+
+
       const htmlStatus = document.getElementById("status");
       const htmlResult = document.getElementById("result");
 
