@@ -22,7 +22,7 @@ use tracing::{error, info, metadata::LevelFilter};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
-type SendChannel = Arc<Mutex<mpsc::Sender<Job>>>;
+type SendChannel = Arc<Mutex<mpsc::SyncSender<Job>>>;
 type Conn = Arc<Mutex<Connection>>;
 
 #[tokio::main]
@@ -37,7 +37,7 @@ async fn main() -> color_eyre::Result<()> {
         )
         .init();
 
-    let (job_queue_send, job_queue_recv) = mpsc::channel(); // FIXME: make this a sync_channel because bounds are cool
+    let (job_queue_send, job_queue_recv) = mpsc::sync_channel(10);
 
     let sqlite_db = env::var("SQLITE_DB").unwrap_or_else(|_| "bisect.sqlite".to_string());
 
@@ -62,7 +62,7 @@ async fn main() -> color_eyre::Result<()> {
 
     std::thread::spawn(|| bisect::bisect_worker(job_queue_recv, worker_conn));
 
-    info!("Starting up server");
+    info!("Starting up server on port 4000");
 
     axum::Server::bind(&"0.0.0.0:4000".parse().unwrap())
         .serve(app.into_make_service())

@@ -85,18 +85,45 @@ impl&lt;T&gt; Struct&lt;T&gt; {
     ></textarea>
 
     <script>
-      let BASE_URL = `${document.location}`;
+      let BASE_URL = `${document.location}`.split("?")[0];
       if (!BASE_URL.endsWith("/")) {
         // ugh, i hate url paths and their subtle interactions with things
         BASE_URL = `${BASE_URL}/`;
       }
 
-
+      // The important HTML elements.
       const htmlStatus = document.getElementById("status");
       const htmlResult = document.getElementById("result");
+      const htmlCode = document.getElementById("code");
+
+      // A list of all ongoing fetches in fetchAndUpdate.
+      const fetches = [];
 
       let bisecting = false;
 
+      initialLoad();
+
+      document.getElementById("bisect-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        submitForm();
+      });
+
+      async function initialLoad() {
+        const params = document.location.search;
+        const urlParams = new URLSearchParams(params);
+        const bisection = urlParams.get("bisection");
+
+        if (bisection) {
+          const response = await fetchAndUpdate(bisection);
+          if (!response) {
+            fatal(`Bisection with ID \`${bisection}\` not found.`);
+            return;
+          }
+          code.value = response.code;
+        }
+      }
+
+      // Report a fatal error to the console and screen.
       function fatal(err, ...extra) {
         console.error(err, ...(extra || []));
         htmlStatus.innerHTML = `ERROR: ${err}`;
@@ -123,15 +150,12 @@ impl&lt;T&gt; Struct&lt;T&gt; {
         bisect(options);
       }
 
-      document.getElementById("bisect-form").addEventListener("submit", (e) => {
-        e.preventDefault();
-        submitForm();
-      });
-
       async function bisect(options) {
         if (bisecting) {
           return;
         }
+
+        fetches.forEach((fetchId) => clearTimeout(fetchId));
 
         bisecting = true;
 
@@ -167,6 +191,11 @@ impl&lt;T&gt; Struct&lt;T&gt; {
           }
           const data = await fetched.json();
           jobId = data?.job_id;
+
+          const urlParams = new URLSearchParams(window.location.search);
+          urlParams.set("bisection", jobId);
+          window.location.search = urlParams;
+
           if (!jobId) {
             fatal("Received invalid response", data);
             return;
@@ -176,38 +205,51 @@ impl&lt;T&gt; Struct&lt;T&gt; {
           return;
         }
 
-        async function tryFetch() {
-          let response;
-          try {
-            const fetched = await fetch(`${BASE_URL}bisect/${jobId}`);
-            if (!fetched.ok) {
-              fatal("Failed to fetch", fetched);
-              return;
-            }
-            response = await fetched.json();
-          } catch (e) {
-            fatal(e);
+        fetchAndUpdate(jobId);
+      }
+
+      async function fetchAndUpdate(jobId) {
+        htmlStatus.innerHTML = `Waiting for result, job id=${jobId}`;
+        htmlStatus.classList.remove("hidden");
+
+        let response;
+        try {
+          const fetched = await fetch(`${BASE_URL}bisect/${jobId}`);
+          if (!fetched.ok) {
+            fatal("Failed to fetch bisection.", fetched);
             return;
           }
-
-          if (response.status.status !== "InProgress") {
-            bisecting = false;
-            console.log(response.status.output);
-
-            htmlStatus.classList.add("hidden");
-            htmlResult.classList.remove("hidden");
-
-            htmlResult.value = response.status.output;
-            htmlStatus.innerHTML = `Bisected job ${jobId}`;
-          } else {
-            console.log("Waiting for bisection", response.status.status);
-            setTimeout(tryFetch, 3000);
-          }
+          response = await fetched.json();
+        } catch (e) {
+          fatal(e);
+          return;
         }
 
-        tryFetch();
+        if (!response) {
+          console.log("Waiting for bisection", response.status.status);
+          const timeout = setTimeout(() => fetchAndUpdate(jobId), 3000);
+          fetches.push(timeout);
+          return response;
+        }
 
-        htmlStatus.innerHTML = `Waiting for result, job id=${jobId}`;
+        const status = response.status;
+
+        if (response.status.status !== "InProgress") {
+          bisecting = false;
+          console.log(response.status.output);
+
+          htmlStatus.classList.add("hidden");
+          htmlResult.classList.remove("hidden");
+
+          htmlResult.value = response.status.output;
+          htmlStatus.innerHTML = `Bisected job ${jobId}`;
+        } else {
+          console.log("Waiting for bisection", response.status.status);
+          const timeout = setTimeout(() => fetchAndUpdate(jobId), 3000);
+          fetches.push(timeout);
+        }
+
+        return response;
       }
     </script>
   </body>
