@@ -2,6 +2,7 @@
 
 mod bisect;
 mod db;
+mod toolchain;
 
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -49,6 +50,8 @@ async fn main() -> color_eyre::Result<()> {
         .wrap_err_with(|| format!("connect to sqlite with file path: {}", sqlite_db))?;
 
     db::setup(&worker_conn).wrap_err("db setup")?;
+
+    toolchain::clean_toolchains()?;
 
     let app = Router::new()
         .route("/", get(|| async { index_html() }))

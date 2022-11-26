@@ -107,6 +107,8 @@ pub fn process_job(job: Job, conn: &Connection) -> Result<()> {
 
     trace!(?bisect, "Finished bisection job");
 
+    crate::toolchain::clean_toolchains()?;
+
     Ok(())
 }
 
