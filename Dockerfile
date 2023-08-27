@@ -28,6 +28,9 @@ RUN cargo install cargo-bisect-rustc
 
 WORKDIR /app
 
+# random user
+USER 4859
+
 COPY --from=build /app/target/release/cargo-bisect-rustc-service cargo-bisect-rustc-service
 
 CMD ["/app/cargo-bisect-rustc-service"]
