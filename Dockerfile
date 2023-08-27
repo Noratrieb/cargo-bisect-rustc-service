@@ -1,4 +1,4 @@
-FROM rust as build
+FROM rust:1.72 as build
 
 RUN rustup toolchain install nightly
 RUN rustup default nightly
@@ -12,17 +12,17 @@ COPY Cargo.toml Cargo.lock ./
 RUN mkdir src
 RUN echo "fn main() {}" > src/main.rs
 
-RUN cargo build --release -Zsparse-registry
+RUN cargo build --release
 
 COPY src ./src
 COPY index.html index.html
 
 # now rebuild with the proper main
 RUN touch src/main.rs
-RUN cargo build --release -Zsparse-registry
+RUN cargo build --release
 
 ### RUN
-FROM rust
+FROM rust:1.72
 
 RUN cargo install cargo-bisect-rustc
 
