@@ -4,7 +4,10 @@ mod bisect;
 mod db;
 mod toolchain;
 
-use std::sync::{mpsc, Arc, Mutex};
+use std::{
+    future,
+    sync::{mpsc, Arc, Mutex},
+};
 
 use crate::bisect::Job;
 use axum::{
@@ -15,6 +18,7 @@ use axum::{
     Extension, Json,
 };
 use color_eyre::eyre::Context;
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -38,6 +42,22 @@ async fn main() -> color_eyre::Result<()> {
         )
         .init();
 
+    let metrics_app = async {
+        let prom_handle = setup_metrics();
+        let router: Router =
+            Router::new().route("/metrics", get(move || future::ready(prom_handle.render())));
+        info!("Starting up metrics server on port 4001");
+        axum::Server::bind(&"0.0.0.0:4001".parse().unwrap())
+            .serve(router.into_make_service())
+            .await
+            .wrap_err("failed to start server")
+    };
+
+    tokio::try_join!(metrics_app, main_server())?;
+    Ok(())
+}
+
+async fn main_server() -> color_eyre::Result<()> {
     let (job_queue_send, job_queue_recv) = mpsc::sync_channel(10);
 
     let sqlite_db = env::var("SQLITE_DB").unwrap_or_else(|_| "bisect.sqlite".to_string());
@@ -115,6 +135,7 @@ async fn do_bisection(
     body: String,
     send_channel: Extension<SendChannel>,
 ) -> impl IntoResponse {
+    metrics::counter!("bisections").increment(1);
     let job_id = Uuid::new_v4();
 
     let job = Job::new(job_id, body, options.0);
@@ -129,4 +150,7 @@ async fn do_bisection(
             "Too many jobs in the queue already",
         )),
     }
+}
+pub fn setup_metrics() -> PrometheusHandle {
+    PrometheusBuilder::new().install_recorder().unwrap()
 }

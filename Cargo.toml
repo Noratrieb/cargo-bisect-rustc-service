@@ -9,6 +9,9 @@ edition = "2021"
 axum = "0.5.16"
 chrono = { version = "0.4.22", features = ["serde", "clock"] }
 color-eyre = "0.6.2"
+metrics = "0.22.3"
+metrics-exporter-prometheus = { version = "0.14.0", default-features = false, features = ["http-listener"] }
+once_cell = "1.19.0"
 rusqlite = { version = "0.28.0", features = ["bundled", "uuid", "chrono"] }
 serde = { version = "1.0.145", features = ["derive"] }
 tempdir = "0.3.7"

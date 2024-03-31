@@ -1,4 +1,4 @@
-FROM rust:1.72 as build
+FROM rust:1.77 as build
 
 RUN rustup toolchain install nightly
 RUN rustup default nightly
@@ -22,7 +22,7 @@ RUN touch src/main.rs
 RUN cargo build --release
 
 ### RUN
-FROM rust:1.72
+FROM rust:1.77
 
 RUN cargo install cargo-bisect-rustc
 
@@ -31,6 +31,10 @@ WORKDIR /app
 # random user
 RUN useradd --create-home bisector
 USER bisector
+
+# this server listens on port 4000 and 4001 (metrics)
+EXPOSE 4000
+EXPOSE 4001
 
 COPY --from=build /app/target/release/cargo-bisect-rustc-service cargo-bisect-rustc-service
 
